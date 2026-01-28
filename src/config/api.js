@@ -3,10 +3,33 @@
  * Централизованное место для настроек API.
  */
 
-// Базовый URL API из переменных окружения
-// В development: /api (через vite proxy)
-// В production: /api (через nginx proxy) или полный URL
-export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Определяем API URL автоматически
+const getApiUrl = () => {
+  // Если задана переменная окружения - используем её
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
+  // В production на Render - используем backend URL
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    
+    // Если на Render frontend - используем Render backend
+    if (hostname.includes('mars-students-frontend.onrender.com')) {
+      return 'https://mars-students-backend.onrender.com/api';
+    }
+    
+    // Если на любом другом .onrender.com домене
+    if (hostname.includes('.onrender.com')) {
+      return 'https://mars-students-backend.onrender.com/api';
+    }
+  }
+  
+  // По умолчанию (localhost) - используем прокси
+  return '/api';
+};
+
+export const API_BASE_URL = getApiUrl();
 
 // Таймауты запросов (в миллисекундах)
 export const API_TIMEOUT = 30000;
