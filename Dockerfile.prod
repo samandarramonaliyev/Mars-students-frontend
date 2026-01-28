@@ -1,42 +1,61 @@
 # =============================================================================
 # PRODUCTION DOCKERFILE FOR REACT FRONTEND
-# Multi-stage build: Node.js для сборки + Nginx для раздачи
+# Multi-stage build: Node.js for building + Nginx for serving
+# Supports: Render, Railway, Docker Compose, VPS
 # =============================================================================
 
+# =============================================================================
 # Stage 1: Build
+# =============================================================================
 FROM node:18-alpine AS builder
+
+# Build argument for API URL
+ARG VITE_API_URL=/api
 
 WORKDIR /app
 
-# Копирование package файлов
+# Copy package files
 COPY package*.json ./
 
-# Установка зависимостей
-RUN npm ci --only=production=false
+# Install all dependencies (including devDependencies for build)
+RUN npm ci
 
-# Копирование исходного кода
+# Copy source code
 COPY . .
 
-# Сборка production версии
+# Set environment variable for build
+ENV VITE_API_URL=${VITE_API_URL}
+
+# Build production version
 RUN npm run build
 
 # =============================================================================
-# Stage 2: Production
+# Stage 2: Production with Nginx
 # =============================================================================
 FROM nginx:alpine
 
-# Копирование конфигурации nginx
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Копирование собранного приложения
+# Copy built application
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+# Create nginx user directories
+RUN mkdir -p /var/cache/nginx /var/run/nginx \
+    && chown -R nginx:nginx /var/cache/nginx /var/run/nginx /usr/share/nginx/html
 
-# Открытие порта
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/ || exit 1
+
+# Expose port
 EXPOSE 80
 
-# Запуск nginx
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]

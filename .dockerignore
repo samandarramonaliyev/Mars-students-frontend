@@ -1,0 +1,38 @@
+# =============================================================================
+# DOCKER IGNORE - FRONTEND
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Environment
+.env.local
+.env.*.local
+
+# Misc
+.DS_Store
+Thumbs.db
+*.md
+!README.md
