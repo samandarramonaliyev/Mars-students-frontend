@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Базовые стили для приложения */
+body {
+  @apply bg-space-950 text-gray-100 font-sans antialiased;
+  min-height: 100vh;
+}
+
+/* Стили для скроллбара */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-space-900;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-space-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-space-500;
+}
+
+/* Утилиты */
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-space-950
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-mars-500 text-white hover:bg-mars-600 focus:ring-mars-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-space-700 text-white hover:bg-space-600 focus:ring-space-500;
+  }
+
+  .btn-outline {
+    @apply btn border-2 border-mars-500 text-mars-500 
+           hover:bg-mars-500 hover:text-white focus:ring-mars-500;
+  }
+
+  .input {
+    @apply w-full px-4 py-2 rounded-lg bg-space-800 border border-space-600 
+           text-white placeholder-gray-400
+           focus:outline-none focus:ring-2 focus:ring-mars-500 focus:border-transparent
+           transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-space-900 rounded-xl border border-space-700 p-6;
+  }
+
+  .card-hover {
+    @apply card hover:border-mars-500 transition-all duration-200;
+  }
+}
+
+/* Анимация typing widget */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s infinite;
+}
+
+/* Стили для правильных/неправильных символов в typing */
+.char-correct {
+  @apply text-green-400;
+}
+
+.char-incorrect {
+  @apply text-red-400 bg-red-900/30;
+}
+
+.char-current {
+  @apply border-b-2 border-mars-500;
+}
