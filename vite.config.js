@@ -23,9 +23,9 @@ export default defineConfig({
   
   // Production build настройки
   build: {
-    outDir: 'dist',
+    outDir: 'build',  // Output to 'build' for Render compatibility
     sourcemap: false,
-    minify: 'esbuild',  // Use esbuild (default, no extra install needed)
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {
