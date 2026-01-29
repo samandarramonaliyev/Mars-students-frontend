@@ -23,7 +23,7 @@ export default defineConfig({
   
   // Production build настройки
   build: {
-    outDir: 'build',  // Output to 'build' for Render compatibility
+    outDir: 'dist',  // Standard Vite output directory (matches render.yaml)
     sourcemap: false,
     minify: 'esbuild',
     rollupOptions: {

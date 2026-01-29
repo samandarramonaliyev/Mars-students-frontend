@@ -1,31 +1,24 @@
 /**
  * Конфигурация API для Mars Devs.
  * Централизованное место для настроек API.
+ * 
+ * ВАЖНО: Для production всегда устанавливайте VITE_API_URL в переменных окружения.
+ * Формат: https://your-backend-domain.com/api (с /api на конце!)
+ * 
+ * Локально используется прокси через vite.config.js, поэтому VITE_API_URL = /api
  */
 
-// Определяем API URL автоматически
+// Определяем API URL
 const getApiUrl = () => {
   // Если задана переменная окружения - используем её
+  // ВАЖНО: VITE_API_URL должен включать /api на конце
   if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  
-  // В production на Render - используем backend URL
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    
-    // Если на Render frontend - используем Render backend
-    if (hostname.includes('mars-students-frontend.onrender.com')) {
-      return 'https://mars-students-backend.onrender.com/api';
-    }
-    
-    // Если на любом другом .onrender.com домене
-    if (hostname.includes('.onrender.com')) {
-      return 'https://mars-students-backend.onrender.com/api';
-    }
+    // Убираем trailing slash если есть
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
   }
   
   // По умолчанию (localhost) - используем прокси
+  // Vite dev server проксирует /api -> http://localhost:8000/api
   return '/api';
 };
 
