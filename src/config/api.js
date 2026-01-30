@@ -17,9 +17,13 @@ const getApiUrl = () => {
     return import.meta.env.VITE_API_URL.replace(/\/$/, '');
   }
   
-  // По умолчанию (localhost) - используем прокси
-  // Vite dev server проксирует /api -> http://localhost:8000/api
-  return '/api';
+  // Локально используем прокси Vite: /api -> http://localhost:8000/api
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+  
+  // Production fallback (если rewrite/proxy не настроен)
+  return 'https://marsdevs-api.onrender.com/api';
 };
 
 export const API_BASE_URL = getApiUrl();

@@ -6,19 +6,19 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://mars-students-backend.onrender.com/api/:path*"
+      "destination": "https://marsdevs-api.onrender.com/api/:path*"
     },
     {
       "source": "/media/:path*",
-      "destination": "https://mars-students-backend.onrender.com/media/:path*"
+      "destination": "https://marsdevs-api.onrender.com/media/:path*"
     },
     {
       "source": "/admin/:path*",
-      "destination": "https://mars-students-backend.onrender.com/admin/:path*"
+      "destination": "https://marsdevs-api.onrender.com/admin/:path*"
     },
     {
       "source": "/static/:path*",
-      "destination": "https://mars-students-backend.onrender.com/static/:path*"
+      "destination": "https://marsdevs-api.onrender.com/static/:path*"
     }
   ],
   "headers": [
