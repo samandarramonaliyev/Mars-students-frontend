@@ -75,6 +75,14 @@ export default function StudentDashboard() {
   }, [activeTab, loadShopData]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    const interval = setInterval(() => {
+      updateUser();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [updateUser, user?.id]);
+
+  useEffect(() => {
     const handleCoinsEarned = (event) => {
       const amount = event?.detail?.amount;
       if (!amount || amount <= 0) return;
@@ -162,7 +170,7 @@ export default function StudentDashboard() {
             </div>
             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-space-900/90 border border-mars-500/50 text-white px-6 py-3 rounded-xl shadow-xl backdrop-blur">
               <span className="text-lg font-semibold">
-                🎉 Табриклаймиз! +{coinReward.amount} 🪙
+                🎉 Вам начислено {coinReward.amount} 🪙
               </span>
             </div>
           </div>
