@@ -23,7 +23,7 @@ const getApiUrl = () => {
   }
   
   // Production fallback (если rewrite/proxy не настроен)
-  return 'https://marsdevs-api.onrender.com/api';
+  return 'https://mars-students-backend.onrender.com/api';
 };
 
 export const API_BASE_URL = getApiUrl();
