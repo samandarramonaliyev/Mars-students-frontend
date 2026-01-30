@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { profileAPI, coinsAPI, typingAPI, chessAPI, tasksAPI } from '../api/axios';
+import { MEDIA_BASE_URL } from '../config/api';
 
 export default function Profile() {
   const { user, updateUser, isStudent } = useAuth();
@@ -112,7 +113,7 @@ export default function Profile() {
 
   // URL аватара
   const avatarUrl = avatarPreview 
-    || (user?.avatar && (user.avatar.startsWith('http') ? user.avatar : `/media/${user.avatar}`));
+    || (user?.avatar && (user.avatar.startsWith('http') ? user.avatar : `${MEDIA_BASE_URL}/media/${user.avatar}`));
 
   return (
     <div className="min-h-screen bg-space-950">

@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import { studentsAPI, tasksAPI, teacherAPI } from '../api/axios';
+import { MEDIA_BASE_URL } from '../config/api';
 
 export default function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('students'); // 'students', 'submissions', 'create'
@@ -260,7 +261,11 @@ function StudentsList({ students, onSelectStudent }) {
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 rounded-full bg-space-700 flex items-center justify-center overflow-hidden">
                 {student.avatar ? (
-                  <img src={student.avatar} alt="" className="w-full h-full object-cover" />
+                  <img 
+                    src={student.avatar.startsWith('http') ? student.avatar : `${MEDIA_BASE_URL}/media/${student.avatar}`} 
+                    alt="" 
+                    className="w-full h-full object-cover" 
+                  />
                 ) : (
                   <span className="text-lg font-semibold text-gray-400">
                     {student.first_name?.[0] || student.username[0]}

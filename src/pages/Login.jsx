@@ -30,7 +30,7 @@ export default function Login() {
         navigate('/student');
       }
     } catch (err) {
-      setError(err.message || 'Ошибка входа');
+      setError(err.message || 'Неверный логин или пароль.');
     } finally {
       setIsLoading(false);
     }

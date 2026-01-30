@@ -4,6 +4,7 @@
  */
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { MEDIA_BASE_URL } from '../config/api';
 
 export default function Navbar() {
   const { user, logout, isStudent } = useAuth();
@@ -16,7 +17,7 @@ export default function Navbar() {
 
   // URL аватара
   const avatarUrl = user?.avatar 
-    ? (user.avatar.startsWith('http') ? user.avatar : `/media/${user.avatar}`)
+    ? (user.avatar.startsWith('http') ? user.avatar : `${MEDIA_BASE_URL}/media/${user.avatar}`)
     : null;
 
   return (

@@ -7,6 +7,7 @@ import { Chessboard } from 'react-chessboard';
 import { Chess as ChessJS } from 'chess.js';
 import { useAuth } from '../context/AuthContext';
 import { chessAPI } from '../api/axios';
+import { MEDIA_BASE_URL } from '../config/api';
 import Navbar from '../components/Navbar';
 
 // Награды за победу
@@ -356,7 +357,7 @@ function PvPSelector({ onBack, onGameStart }) {
                 <div className="w-10 h-10 rounded-full bg-space-700 overflow-hidden">
                   {student.avatar ? (
                     <img 
-                      src={student.avatar.startsWith('http') ? student.avatar : `/media/${student.avatar}`}
+                      src={student.avatar.startsWith('http') ? student.avatar : `${MEDIA_BASE_URL}/media/${student.avatar}`}
                       alt="" 
                       className="w-full h-full object-cover"
                     />
