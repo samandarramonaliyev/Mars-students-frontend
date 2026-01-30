@@ -188,10 +188,11 @@ function PvPSelector({ onBack, onGameStart }) {
     }
   };
 
-  const joinAcceptedGame = async () => {
-    if (!acceptedInvite?.game) return;
+  const joinAcceptedGame = async (gameId) => {
+    const targetGameId = gameId || acceptedInvite?.game;
+    if (!targetGameId) return;
     try {
-      const gameRes = await chessAPI.getGameState(acceptedInvite.game);
+      const gameRes = await chessAPI.getGameState(targetGameId);
       if (gameRes.data?.game) {
         onGameStart(gameRes.data.game);
       }
@@ -251,7 +252,7 @@ function PvPSelector({ onBack, onGameStart }) {
             Игра готова. {acceptedInvite.from_player_name || 'Соперник'} принял приглашение.
           </span>
           <button
-            onClick={joinAcceptedGame}
+            onClick={() => joinAcceptedGame(acceptedInvite.game)}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
           >
             Войти в игру
@@ -270,20 +271,29 @@ function PvPSelector({ onBack, onGameStart }) {
                 className="bg-space-800 border border-green-500/50 rounded-lg p-4 flex items-center justify-between"
               >
                 <span className="text-white">{invite.from_player_name} хочет сыграть</span>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => acceptInvite(invite.id)}
+                {invite.status === 'ACCEPTED' && invite.game ? (
+                  <button
+                    onClick={() => joinAcceptedGame(invite.game)}
                     className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
                   >
-                    Принять
+                    Войти в игру
                   </button>
-                  <button 
-                    onClick={() => declineInvite(invite.id)}
-                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-                  >
-                    Отклонить
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => acceptInvite(invite.id)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Принять
+                    </button>
+                    <button 
+                      onClick={() => declineInvite(invite.id)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Отклонить
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -300,13 +310,29 @@ function PvPSelector({ onBack, onGameStart }) {
                 key={invite.id}
                 className="bg-space-800 border border-yellow-500/50 rounded-lg p-4 flex items-center justify-between"
               >
-                <span className="text-white">Ожидание ответа от {invite.to_player_name}...</span>
-                <button 
-                  onClick={() => cancelInvite(invite.id)}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  Отменить
-                </button>
+                {invite.status === 'ACCEPTED' && invite.game ? (
+                  <>
+                    <span className="text-white">
+                      {invite.to_player_name} принял приглашение
+                    </span>
+                    <button
+                      onClick={() => joinAcceptedGame(invite.game)}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Войти в игру
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-white">Ожидание ответа от {invite.to_player_name}...</span>
+                    <button 
+                      onClick={() => cancelInvite(invite.id)}
+                      className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Отменить
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>

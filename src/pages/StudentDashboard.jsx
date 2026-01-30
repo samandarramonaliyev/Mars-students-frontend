@@ -2,7 +2,7 @@
  * Дашборд студента.
  * Содержит задания, typing, обзор и магазин.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import TypingWidget from '../components/TypingWidget';
 import TaskList from '../components/TaskList';
@@ -23,6 +23,24 @@ export default function StudentDashboard() {
   
   // Модальное окно после покупки
   const [purchaseResult, setPurchaseResult] = useState(null);
+  
+  // Уведомление о награде монет
+  const [coinReward, setCoinReward] = useState(null);
+  const [confettiPieces, setConfettiPieces] = useState([]);
+  const hideRewardTimeoutRef = useRef(null);
+
+  const createConfettiPieces = () => {
+    const colors = ['#F59E0B', '#F97316', '#10B981', '#3B82F6', '#A855F7', '#F43F5E'];
+    return Array.from({ length: 36 }).map((_, idx) => ({
+      id: idx,
+      left: Math.random() * 100,
+      size: 6 + Math.random() * 6,
+      delay: Math.random() * 0.4,
+      duration: 2.2 + Math.random() * 1.4,
+      rotation: Math.random() * 360,
+      color: colors[Math.floor(Math.random() * colors.length)]
+    }));
+  };
 
   const handleTaskSelect = (task) => {
     setSelectedTask(task);
@@ -55,6 +73,32 @@ export default function StudentDashboard() {
       loadShopData();
     }
   }, [activeTab, loadShopData]);
+
+  useEffect(() => {
+    const handleCoinsEarned = (event) => {
+      const amount = event?.detail?.amount;
+      if (!amount || amount <= 0) return;
+      
+      setCoinReward({ amount });
+      setConfettiPieces(createConfettiPieces());
+      
+      if (hideRewardTimeoutRef.current) {
+        clearTimeout(hideRewardTimeoutRef.current);
+      }
+      hideRewardTimeoutRef.current = setTimeout(() => {
+        setCoinReward(null);
+        setConfettiPieces([]);
+      }, 3200);
+    };
+
+    window.addEventListener('coins:earned', handleCoinsEarned);
+    return () => {
+      window.removeEventListener('coins:earned', handleCoinsEarned);
+      if (hideRewardTimeoutRef.current) {
+        clearTimeout(hideRewardTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Покупка товара
   const handleBuyProduct = async (product) => {
@@ -96,7 +140,33 @@ export default function StudentDashboard() {
     <div className="min-h-screen bg-space-950">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
+        {coinReward && activeTab === 'dashboard' && (
+          <div className="fixed inset-0 pointer-events-none z-50">
+            <div className="absolute inset-0 overflow-hidden">
+              {confettiPieces.map(piece => (
+                <span
+                  key={piece.id}
+                  className="confetti-piece"
+                  style={{
+                    left: `${piece.left}%`,
+                    width: `${piece.size}px`,
+                    height: `${piece.size * 1.4}px`,
+                    backgroundColor: piece.color,
+                    animationDelay: `${piece.delay}s`,
+                    animationDuration: `${piece.duration}s`,
+                    transform: `rotate(${piece.rotation}deg)`
+                  }}
+                />
+              ))}
+            </div>
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-space-900/90 border border-mars-500/50 text-white px-6 py-3 rounded-xl shadow-xl backdrop-blur">
+              <span className="text-lg font-semibold">
+                🎉 Табриклаймиз! +{coinReward.amount} 🪙
+              </span>
+            </div>
+          </div>
+        )}
         {/* Приветствие */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">
