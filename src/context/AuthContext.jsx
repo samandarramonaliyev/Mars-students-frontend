@@ -24,13 +24,29 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const getLoginErrorMessage = (data) => {
+    if (!data) return 'Ошибка входа. Проверьте логин и пароль.';
+    if (typeof data === 'string') return data;
+    if (data.non_field_errors?.length) return data.non_field_errors[0];
+    if (data.detail) return data.detail;
+    if (data.error) return data.error;
+    const firstKey = Object.keys(data)[0];
+    if (firstKey) {
+      const value = data[firstKey];
+      if (Array.isArray(value)) return value[0];
+      if (typeof value === 'string') return value;
+    }
+    return 'Ошибка входа. Проверьте логин и пароль.';
+  };
+
   // Функция логина
   const login = useCallback(async (username, password, expectedRole) => {
     setError(null);
     setLoading(true);
 
     try {
-      const response = await authAPI.login(username, password, expectedRole);
+      const cleanUsername = typeof username === 'string' ? username.trim() : username;
+      const response = await authAPI.login(cleanUsername, password, expectedRole);
       const { access, refresh, user: userData } = response.data;
 
       // Сохраняем токены
@@ -43,10 +59,7 @@ export function AuthProvider({ children }) {
 
       return userData;
     } catch (err) {
-      const errorMessage = err.response?.data?.non_field_errors?.[0] 
-        || err.response?.data?.detail 
-        || 'Ошибка входа. Проверьте логин и пароль.';
-      
+      const errorMessage = getLoginErrorMessage(err.response?.data);
       setError(errorMessage);
       setLoading(false);
       throw new Error(errorMessage);
