@@ -13,8 +13,9 @@ const getApiUrl = () => {
   // Если задана переменная окружения - используем её
   // ВАЖНО: VITE_API_URL должен включать /api на конце
   if (import.meta.env.VITE_API_URL) {
-    // Убираем trailing slash если есть
-    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+    // Убираем trailing slash если есть и гарантируем /api на конце
+    const rawUrl = import.meta.env.VITE_API_URL.replace(/\/$/, '');
+    return rawUrl.endsWith('/api') ? rawUrl : `${rawUrl}/api`;
   }
   
   // Локально используем прокси Vite: /api -> http://localhost:8000/api
