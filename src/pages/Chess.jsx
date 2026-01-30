@@ -144,13 +144,24 @@ function PvPSelector({ onBack, onGameStart }) {
       setStudents(studentsRes.data);
       setInvites(invitesRes.data);
       setError(null);
+
+      const acceptedInvite =
+        invitesRes.data.outgoing.find((invite) => invite.status === 'ACCEPTED' && invite.game) ||
+        invitesRes.data.incoming.find((invite) => invite.status === 'ACCEPTED' && invite.game);
+
+      if (acceptedInvite) {
+        const gameRes = await chessAPI.getGameState(acceptedInvite.game);
+        if (gameRes.data?.game) {
+          onGameStart(gameRes.data.game);
+        }
+      }
     } catch (err) {
       setError('Ошибка загрузки данных');
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onGameStart]);
 
   useEffect(() => {
     loadData();
