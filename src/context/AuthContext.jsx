@@ -36,44 +36,6 @@ export function AuthProvider({ children }) {
     }));
   }, []);
 
-  // Инициализация: проверяем наличие сохранённого токена
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem('access_token');
-      const savedUser = localStorage.getItem('user');
-      let prevBalance = null;
-      
-      if (savedUser) {
-        try {
-          const savedUserData = JSON.parse(savedUser);
-          if (typeof savedUserData?.balance === 'number') {
-            prevBalance = savedUserData.balance;
-          }
-        } catch {
-          prevBalance = null;
-        }
-      }
-      
-      if (token && savedUser) {
-        try {
-          // Проверяем актуальность данных пользователя
-          const response = await profileAPI.get();
-          setUser(response.data);
-          localStorage.setItem('user', JSON.stringify(response.data));
-          emitCoinReward(prevBalance, response.data?.balance);
-        } catch (err) {
-          // Токен невалиден, очищаем данные
-          console.error('Ошибка получения профиля:', err);
-          logout();
-        }
-      }
-      
-      setLoading(false);
-    };
-
-    initAuth();
-  }, [emitCoinReward, logout]);
-
   // Функция логина
   const login = useCallback(async (username, password, expectedRole) => {
     setError(null);
@@ -111,6 +73,44 @@ export function AuthProvider({ children }) {
     setUser(null);
     setError(null);
   }, []);
+
+  // Инициализация: проверяем наличие сохранённого токена
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem('access_token');
+      const savedUser = localStorage.getItem('user');
+      let prevBalance = null;
+      
+      if (savedUser) {
+        try {
+          const savedUserData = JSON.parse(savedUser);
+          if (typeof savedUserData?.balance === 'number') {
+            prevBalance = savedUserData.balance;
+          }
+        } catch {
+          prevBalance = null;
+        }
+      }
+      
+      if (token && savedUser) {
+        try {
+          // Проверяем актуальность данных пользователя
+          const response = await profileAPI.get();
+          setUser(response.data);
+          localStorage.setItem('user', JSON.stringify(response.data));
+          emitCoinReward(prevBalance, response.data?.balance);
+        } catch (err) {
+          // Токен невалиден, очищаем данные
+          console.error('Ошибка получения профиля:', err);
+          logout();
+        }
+      }
+      
+      setLoading(false);
+    };
+
+    initAuth();
+  }, [emitCoinReward, logout]);
 
   // Обновление данных пользователя
   const updateUser = useCallback(async () => {
