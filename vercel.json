@@ -19,6 +19,10 @@
     {
       "source": "/static/:path*",
       "destination": "https://mars-students-backend.onrender.com/static/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
     }
   ],
   "headers": [

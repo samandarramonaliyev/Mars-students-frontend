@@ -131,6 +131,7 @@ function BotLevelSelector({ onSelect, onBack }) {
 function PvPSelector({ onBack, onGameStart }) {
   const [students, setStudents] = useState([]);
   const [invites, setInvites] = useState({ incoming: [], outgoing: [] });
+  const [acceptedInvite, setAcceptedInvite] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -144,24 +145,19 @@ function PvPSelector({ onBack, onGameStart }) {
       setStudents(studentsRes.data);
       setInvites(invitesRes.data);
       setError(null);
-
-      const acceptedInvite =
+      
+      const activeInvite =
         invitesRes.data.outgoing.find((invite) => invite.status === 'ACCEPTED' && invite.game) ||
         invitesRes.data.incoming.find((invite) => invite.status === 'ACCEPTED' && invite.game);
-
-      if (acceptedInvite) {
-        const gameRes = await chessAPI.getGameState(acceptedInvite.game);
-        if (gameRes.data?.game) {
-          onGameStart(gameRes.data.game);
-        }
-      }
+      
+      setAcceptedInvite(activeInvite || null);
     } catch (err) {
       setError('Ошибка загрузки данных');
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [onGameStart]);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -189,6 +185,18 @@ function PvPSelector({ onBack, onGameStart }) {
       }
     } catch (err) {
       alert(err.response?.data?.error || 'Ошибка принятия приглашения');
+    }
+  };
+
+  const joinAcceptedGame = async () => {
+    if (!acceptedInvite?.game) return;
+    try {
+      const gameRes = await chessAPI.getGameState(acceptedInvite.game);
+      if (gameRes.data?.game) {
+        onGameStart(gameRes.data.game);
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Ошибка входа в игру');
     }
   };
 
@@ -234,6 +242,20 @@ function PvPSelector({ onBack, onGameStart }) {
       {error && (
         <div className="bg-red-500/20 text-red-400 p-4 rounded-lg mb-6 text-center">
           {error}
+        </div>
+      )}
+      
+      {acceptedInvite && (
+        <div className="bg-green-500/10 border border-green-500/40 rounded-lg p-4 mb-6 flex items-center justify-between">
+          <span className="text-green-300">
+            Игра готова. {acceptedInvite.from_player_name || 'Соперник'} принял приглашение.
+          </span>
+          <button
+            onClick={joinAcceptedGame}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Войти в игру
+          </button>
         </div>
       )}
 
