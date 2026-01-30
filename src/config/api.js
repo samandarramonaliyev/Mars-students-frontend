@@ -30,6 +30,8 @@ const getApiUrl = () => {
 export const API_BASE_URL = getApiUrl();
 // Базовый URL для медиа (убираем /api если есть)
 export const MEDIA_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
+// Базовый URL для WebSocket
+export const WS_BASE_URL = MEDIA_BASE_URL.replace(/^http/, 'ws');
 
 // Таймауты запросов (в миллисекундах)
 export const API_TIMEOUT = 30000;
@@ -104,6 +106,7 @@ export const API_ENDPOINTS = {
 export default {
   API_BASE_URL,
   MEDIA_BASE_URL,
+  WS_BASE_URL,
   API_TIMEOUT,
   API_ENDPOINTS,
 };

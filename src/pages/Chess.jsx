@@ -7,14 +7,8 @@ import { Chessboard } from 'react-chessboard';
 import { Chess as ChessJS } from 'chess.js';
 import { useAuth } from '../context/AuthContext';
 import { chessAPI } from '../api/axios';
-import { MEDIA_BASE_URL } from '../config/api';
+import { MEDIA_BASE_URL, WS_BASE_URL } from '../config/api';
 import Navbar from '../components/Navbar';
-
-// Награды за победу
-const REWARDS = {
-  BOT: { easy: 45, medium: 75, hard: 100 },
-  STUDENT: 50
-};
 
 // Компонент модального окна результата
 function ResultModal({ isOpen, result, coinsEarned, onClose, opponentName }) {
@@ -22,7 +16,7 @@ function ResultModal({ isOpen, result, coinsEarned, onClose, opponentName }) {
 
   const resultText = {
     WIN: 'Победа! 🎉',
-    LOSE: 'Поражение 😔',
+    LOSE: 'Поражение 🚩',
     DRAW: 'Ничья 🤝'
   };
 
@@ -393,320 +387,269 @@ function PvPSelector({ onBack, onGameStart }) {
 }
 
 // Компонент шахматной доски (игра)
-function ChessGame({ game, botLevel, isPvP, playerColor, onFinish, onBack }) {
+function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
   const [chess] = useState(new ChessJS());
-  const [fen, setFen] = useState(chess.fen());
+  const [fen, setFen] = useState(game?.fen_position || chess.fen());
   const [gameOver, setGameOver] = useState(false);
-  const [status, setStatus] = useState('Ваш ход');
+  const [status, setStatus] = useState('Ожидание соперника...');
   const [lastMove, setLastMove] = useState(null);
-  const isThinking = useRef(false);
+  const [moveHistory, setMoveHistory] = useState(game?.move_history || []);
+  const [whiteTime, setWhiteTime] = useState(game?.white_time ?? 300);
+  const [blackTime, setBlackTime] = useState(game?.black_time ?? 300);
+  const [currentTurn, setCurrentTurn] = useState(game?.current_turn || 'white');
+  const [replayIndex, setReplayIndex] = useState(null);
+  const [replayFen, setReplayFen] = useState(null);
+  const socketRef = useRef(null);
 
-  // Обновление статуса
-  const updateStatus = useCallback(() => {
-    if (chess.isCheckmate()) {
-      const winner = chess.turn() === 'w' ? 'black' : 'white';
-      setStatus(winner === 'white' ? 'Мат! Белые победили' : 'Мат! Чёрные победили');
-      return true;
-    }
-    if (chess.isDraw()) {
-      setStatus('Ничья!');
-      return true;
-    }
-    if (chess.isCheck()) {
-      setStatus('Шах!');
-    } else {
-      setStatus(chess.turn() === 'w' ? 'Ход белых' : 'Ход чёрных');
-    }
-    return false;
-  }, [chess]);
+  const isMyTurn = currentTurn === playerColor;
+  const isReplay = replayIndex !== null;
 
-  // === БОТ ЛОГИКА ===
-  
-  // Легкий бот - случайный ход
-  const easyBotMove = useCallback(() => {
-    const moves = chess.moves();
-    if (moves.length === 0) return null;
-    return moves[Math.floor(Math.random() * moves.length)];
-  }, [chess]);
+  const formatTime = (seconds) => {
+    const safeSeconds = Math.max(0, Math.floor(seconds || 0));
+    const mins = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
+    const secs = String(safeSeconds % 60).padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
 
-  // Средний бот - приоритет взятий
-  const mediumBotMove = useCallback(() => {
-    const moves = chess.moves({ verbose: true });
-    if (moves.length === 0) return null;
-    
-    // Сначала ищем взятия
-    const captures = moves.filter(m => m.captured);
-    if (captures.length > 0) {
-      // Выбираем взятие с максимальной ценностью
-      const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-      captures.sort((a, b) => pieceValues[b.captured] - pieceValues[a.captured]);
-      return captures[0].san;
+  const uciToSquares = (uci) => {
+    if (!uci || uci.length < 4) return null;
+    return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
+  };
+
+  const applyState = (data) => {
+    if (data.fen) {
+      chess.load(data.fen);
+      setFen(data.fen);
     }
-    
-    // Если нет взятий - случайный ход
-    return moves[Math.floor(Math.random() * moves.length)].san;
-  }, [chess]);
-
-  // Сложный бот - minimax
-  const hardBotMove = useCallback(() => {
-    const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
-    
-    // Оценка позиции
-    const evaluate = () => {
-      let score = 0;
-      const board = chess.board();
-      
-      for (let i = 0; i < 8; i++) {
-        for (let j = 0; j < 8; j++) {
-          const piece = board[i][j];
-          if (piece) {
-            const value = pieceValues[piece.type];
-            score += piece.color === 'b' ? value : -value;
-          }
-        }
-      }
-      return score;
-    };
-    
-    // Minimax с альфа-бета отсечением
-    const minimax = (depth, alpha, beta, isMaximizing) => {
-      if (depth === 0 || chess.isGameOver()) {
-        return evaluate();
-      }
-      
-      const moves = chess.moves();
-      
-      if (isMaximizing) {
-        let maxEval = -Infinity;
-        for (const move of moves) {
-          chess.move(move);
-          const evalScore = minimax(depth - 1, alpha, beta, false);
-          chess.undo();
-          maxEval = Math.max(maxEval, evalScore);
-          alpha = Math.max(alpha, evalScore);
-          if (beta <= alpha) break;
-        }
-        return maxEval;
-      } else {
-        let minEval = Infinity;
-        for (const move of moves) {
-          chess.move(move);
-          const evalScore = minimax(depth - 1, alpha, beta, true);
-          chess.undo();
-          minEval = Math.min(minEval, evalScore);
-          beta = Math.min(beta, evalScore);
-          if (beta <= alpha) break;
-        }
-        return minEval;
-      }
-    };
-    
-    // Находим лучший ход
-    const moves = chess.moves();
-    if (moves.length === 0) return null;
-    
-    let bestMove = moves[0];
-    let bestScore = -Infinity;
-    
-    for (const move of moves) {
-      chess.move(move);
-      const score = minimax(2, -Infinity, Infinity, false);
-      chess.undo();
-      
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
-      }
+    if (data.last_move) {
+      setLastMove(uciToSquares(data.last_move));
     }
-    
-    return bestMove;
-  }, [chess]);
+    if (Array.isArray(data.move_history)) {
+      setMoveHistory(data.move_history);
+    }
+    if (typeof data.white_time === 'number') setWhiteTime(data.white_time);
+    if (typeof data.black_time === 'number') setBlackTime(data.black_time);
+    if (data.current_turn) setCurrentTurn(data.current_turn);
+    if (data.status === 'FINISHED' || data.type === 'game_over') {
+      setGameOver(true);
+    }
+  };
 
-  // Ход бота
-  const makeBotMove = useCallback(() => {
-    if (isThinking.current || chess.isGameOver()) return;
-    
-    isThinking.current = true;
-    setStatus('Бот думает...');
-    
-    setTimeout(() => {
-      let move;
-      switch (botLevel) {
-        case 'easy':
-          move = easyBotMove();
-          break;
-        case 'medium':
-          move = mediumBotMove();
-          break;
-        case 'hard':
-          move = hardBotMove();
-          break;
-        default:
-          move = easyBotMove();
+  const buildReplayFen = (history, index) => {
+    const temp = new ChessJS();
+    for (let i = 0; i <= index; i += 1) {
+      const move = history[i];
+      if (!move) break;
+      temp.move(move);
+    }
+    return temp.fen();
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    const ws = new WebSocket(`${WS_BASE_URL}/ws/chess/${game.id}/?token=${token}`);
+    socketRef.current = ws;
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'game_state') {
+        applyState(data);
       }
-      
-      if (move) {
-        const result = chess.move(move);
-        if (result) {
-          setFen(chess.fen());
-          setLastMove({ from: result.from, to: result.to });
-        }
+      if (data.type === 'move') {
+        applyState(data);
       }
-      
-      isThinking.current = false;
-      
-      if (updateStatus()) {
+      if (data.type === 'timer_update') {
+        if (typeof data.white_time === 'number') setWhiteTime(data.white_time);
+        if (typeof data.black_time === 'number') setBlackTime(data.black_time);
+        if (data.current_turn) setCurrentTurn(data.current_turn);
+      }
+      if (data.type === 'game_over') {
+        applyState(data);
         setGameOver(true);
+        onGameOver?.(data);
       }
-    }, 500 + Math.random() * 1000); // Задержка для реализма
-  }, [chess, botLevel, easyBotMove, mediumBotMove, hardBotMove, updateStatus]);
+      if (data.type === 'error') {
+        setStatus(data.message || 'Ошибка хода');
+      }
+    };
+
+    ws.onerror = () => {
+      setStatus('Ошибка соединения');
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [game.id, onGameOver]);
+
+  useEffect(() => {
+    if (gameOver) {
+      setStatus('Игра завершена');
+      return;
+    }
+    setStatus(isMyTurn ? 'Ваш ход' : 'Ход соперника');
+  }, [currentTurn, isMyTurn, gameOver]);
 
   // Обработка хода игрока
   const onDrop = (sourceSquare, targetSquare) => {
-    if (gameOver || isThinking.current) return false;
-    
-    // Для PvP проверяем, наш ли ход
-    if (isPvP && chess.turn() !== playerColor[0]) {
+    if (gameOver || isReplay) return false;
+    if (!isMyTurn) return false;
+
+    const temp = new ChessJS(fen);
+    const move = temp.move({
+      from: sourceSquare,
+      to: targetSquare,
+      promotion: 'q'
+    });
+    if (!move) {
       return false;
     }
-    
-    try {
-      const move = chess.move({
-        from: sourceSquare,
-        to: targetSquare,
-        promotion: 'q' // Всегда превращаем в ферзя
-      });
-      
-      if (move === null) return false;
-      
-      setFen(chess.fen());
-      setLastMove({ from: sourceSquare, to: targetSquare });
-      
-      if (updateStatus()) {
-        setGameOver(true);
-        return true;
-      }
-      
-      // Если игра с ботом - делаем ход бота
-      if (!isPvP) {
-        makeBotMove();
-      }
-      
-      return true;
-    } catch (e) {
-      return false;
+
+    socketRef.current?.send(JSON.stringify({
+      type: 'move',
+      from: sourceSquare,
+      to: targetSquare,
+      promotion: 'q'
+    }));
+    return true;
+  };
+
+  const handleResign = () => {
+    if (gameOver) return;
+    if (!confirm('Вы уверены, что хотите сдаться?')) return;
+    socketRef.current?.send(JSON.stringify({ type: 'resign' }));
+  };
+
+  const handleReplayClick = (index) => {
+    setReplayIndex(index);
+    setReplayFen(buildReplayFen(moveHistory, index));
+  };
+
+  const handleReplayPrev = () => {
+    if (replayIndex === null) return;
+    const nextIndex = Math.max(-1, replayIndex - 1);
+    if (nextIndex === -1) {
+      setReplayIndex(null);
+      setReplayFen(null);
+      return;
     }
+    setReplayIndex(nextIndex);
+    setReplayFen(buildReplayFen(moveHistory, nextIndex));
   };
 
-  // Сдаться
-  const resign = () => {
-    setGameOver(true);
-    setStatus('Вы сдались');
+  const handleReplayNext = () => {
+    if (replayIndex === null) return;
+    const nextIndex = Math.min(moveHistory.length - 1, replayIndex + 1);
+    setReplayIndex(nextIndex);
+    setReplayFen(buildReplayFen(moveHistory, nextIndex));
   };
 
-  // Завершение игры
-  const handleFinish = () => {
-    let result;
-    
-    if (chess.isCheckmate()) {
-      // Кто получил мат?
-      const loser = chess.turn(); // Тот, чей ход - проиграл
-      if (isPvP) {
-        result = loser === playerColor[0] ? 'LOSE' : 'WIN';
-      } else {
-        result = loser === 'w' ? 'LOSE' : 'WIN';
-      }
-    } else if (chess.isDraw()) {
-      result = 'DRAW';
-    } else {
-      // Сдались
-      result = 'LOSE';
-    }
-    
-    onFinish(result);
-  };
+  const boardFen = isReplay ? replayFen : fen;
 
-  // Подсветка последнего хода
-  const customSquareStyles = lastMove ? {
-    [lastMove.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
-    [lastMove.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' }
-  } : {};
+  const moveRows = [];
+  for (let i = 0; i < moveHistory.length; i += 2) {
+    moveRows.push({
+      number: i / 2 + 1,
+      white: moveHistory[i],
+      black: moveHistory[i + 1],
+      whiteIndex: i,
+      blackIndex: i + 1
+    });
+  }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 items-start justify-center">
-      {/* Доска */}
-      <div className="w-full max-w-[600px]">
-        <Chessboard 
-          position={fen}
-          onPieceDrop={onDrop}
-          boardOrientation={isPvP ? playerColor : 'white'}
-          customSquareStyles={customSquareStyles}
-          customBoardStyle={{
-            borderRadius: '8px',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-          }}
-        />
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2">
+        <div className="bg-space-900 rounded-xl p-4">
+          <Chessboard
+            position={boardFen}
+            onPieceDrop={onDrop}
+            boardOrientation={playerColor}
+            arePiecesDraggable={!gameOver && !isReplay}
+            animationDuration={300}
+            customSquareStyles={
+              lastMove
+                ? {
+                    [lastMove.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+                    [lastMove.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+                  }
+                : {}
+            }
+          />
+        </div>
       </div>
 
-      {/* Панель управления */}
-      <div className="w-full lg:w-64 space-y-4">
-        <div className="bg-space-800 rounded-lg p-4">
-          <h3 className="text-lg font-bold text-white mb-2">
-            {isPvP ? 'Игра со студентом' : `Бот (${botLevel})`}
-          </h3>
-          <p className={`text-lg ${
-            status.includes('Мат') || status.includes('Ничья') 
-              ? 'text-yellow-500 font-bold' 
-              : 'text-gray-300'
-          }`}>
-            {status}
-          </p>
+      <div className="space-y-4">
+        <div className="card">
+          <h3 className="text-lg font-semibold text-white mb-2">Таймер</h3>
+          <div className="flex justify-between text-gray-300">
+            <span>Белые:</span>
+            <span className="font-mono">{formatTime(whiteTime)}</span>
+          </div>
+          <div className="flex justify-between text-gray-300">
+            <span>Чёрные:</span>
+            <span className="font-mono">{formatTime(blackTime)}</span>
+          </div>
         </div>
 
-        {isPvP && (
-          <div className="bg-space-800 rounded-lg p-4">
-            <p className="text-gray-400">Вы играете:</p>
-            <p className="text-white font-bold">
-              {playerColor === 'white' ? '⬜ Белыми' : '⬛ Чёрными'}
-            </p>
+        <div className="card">
+          <h3 className="text-lg font-semibold text-white mb-2">Статус</h3>
+          <p className="text-gray-300">{status}</p>
+        </div>
+
+        <div className="card">
+          <h3 className="text-lg font-semibold text-white mb-2">История ходов</h3>
+          <div className="max-h-64 overflow-y-auto text-sm text-gray-300 space-y-1">
+            {moveRows.length === 0 && <p>Пока ходов нет</p>}
+            {moveRows.map((row) => (
+              <div key={row.number} className="flex gap-3">
+                <span className="w-6 text-gray-500">{row.number}.</span>
+                <button
+                  type="button"
+                  onClick={() => handleReplayClick(row.whiteIndex)}
+                  className="hover:text-white"
+                >
+                  {row.white || '-'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReplayClick(row.blackIndex)}
+                  className="hover:text-white"
+                >
+                  {row.black || '-'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {gameOver && (
+          <div className="card">
+            <h3 className="text-lg font-semibold text-white mb-2">Replay</h3>
+            <div className="flex gap-2">
+              <button onClick={handleReplayPrev} className="btn-secondary">Назад</button>
+              <button onClick={handleReplayNext} className="btn-secondary">Вперёд</button>
+              <button onClick={() => { setReplayIndex(null); setReplayFen(null); }} className="btn-secondary">
+                К игре
+              </button>
+            </div>
           </div>
         )}
 
-        {!gameOver ? (
-          <button 
-            onClick={resign}
-            className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg transition-colors"
+        <div className="card">
+          <button
+            onClick={handleResign}
+            className="w-full btn-outline mb-3"
+            disabled={gameOver}
           >
-            🏳️ Сдаться
+            🚩 Сдаться
           </button>
-        ) : (
-          <button 
-            onClick={handleFinish}
-            className="w-full btn-primary py-3"
+          <button
+            onClick={onExit}
+            className="w-full bg-space-700 hover:bg-space-600 text-white py-3 rounded-lg transition-colors"
           >
-            Завершить игру
+            Выйти
           </button>
-        )}
-
-        <button 
-          onClick={onBack}
-          className="w-full bg-space-700 hover:bg-space-600 text-white py-3 rounded-lg transition-colors"
-        >
-          Выйти
-        </button>
-
-        <div className="bg-space-800 rounded-lg p-4">
-          <h4 className="text-sm font-bold text-gray-400 mb-2">Награды:</h4>
-          {isPvP ? (
-            <ul className="text-sm text-gray-300 space-y-1">
-              <li>Победа: +50 🪙</li>
-              <li>Ничья: +20 🪙</li>
-            </ul>
-          ) : (
-            <p className="text-sm text-gray-300">
-              Победа: +{REWARDS.BOT[botLevel]} 🪙
-            </p>
-          )}
         </div>
       </div>
     </div>
@@ -729,7 +672,8 @@ export default function Chess() {
       setGameData({
         game: response.data.game,
         botLevel: level,
-        isPvP: false
+        isPvP: false,
+        playerColor: 'white'
       });
       setMode('playing');
     } catch (err) {
@@ -748,25 +692,16 @@ export default function Chess() {
     setMode('playing');
   };
 
-  // Завершить игру
-  const finishGame = async (gameResult) => {
-    try {
-      const response = await chessAPI.finishGame(gameData.game.id, gameResult);
-      setResult(gameResult);
-      setCoinsEarned(response.data.coins_earned);
-      setShowResult(true);
-      
-      // Обновляем баланс пользователя
-      if (response.data.coins_earned > 0) {
-        updateUser();
-      }
-    } catch (err) {
-      console.error('Ошибка завершения игры:', err);
-      // Всё равно показываем результат
-      setResult(gameResult);
-      setCoinsEarned(0);
-      setShowResult(true);
-    }
+  const handleGameOver = (payload) => {
+    const resultValue = payload?.result || (
+      payload?.winner_id === user?.id ? 'WIN' :
+      payload?.loser_id === user?.id ? 'LOSE' :
+      'DRAW'
+    );
+    setResult(resultValue);
+    setCoinsEarned(payload?.coins_earned || 0);
+    setShowResult(true);
+    updateUser();
   };
 
   // Закрыть модальное окно результата
@@ -778,8 +713,13 @@ export default function Chess() {
 
   // Выйти из игры
   const exitGame = () => {
-    if (confirm('Вы уверены, что хотите выйти? Игра будет засчитана как поражение.')) {
-      finishGame('LOSE');
+    if (!gameData) {
+      setMode(null);
+      return;
+    }
+    if (confirm('Выйти из игры?')) {
+      setMode(null);
+      setGameData(null);
     }
   };
 
@@ -833,11 +773,10 @@ export default function Chess() {
         {mode === 'playing' && gameData && (
           <ChessGame 
             game={gameData.game}
-            botLevel={gameData.botLevel}
             isPvP={gameData.isPvP}
             playerColor={gameData.playerColor}
-            onFinish={finishGame}
-            onBack={exitGame}
+            onGameOver={handleGameOver}
+            onExit={exitGame}
           />
         )}
 
