@@ -219,4 +219,12 @@ export const shopAPI = {
   purchases: () => api.get('/shop/purchases/'),
 };
 
+export const notificationsAPI = {
+  // Уведомления о начислении coin
+  coins: () => api.get('/notifications/coins/'),
+  
+  // Пометить уведомления как просмотренные
+  markCoinSeen: (ids) => api.post('/notifications/coins/mark-seen/', { ids }),
+};
+
 export default api;

@@ -24,18 +24,6 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const emitCoinReward = useCallback((prevBalance, nextBalance) => {
-    if (typeof window === 'undefined') return;
-    if (typeof prevBalance !== 'number' || typeof nextBalance !== 'number') return;
-    if (nextBalance <= prevBalance) return;
-    window.dispatchEvent(new CustomEvent('coins:earned', {
-      detail: {
-        amount: nextBalance - prevBalance,
-        balance: nextBalance
-      }
-    }));
-  }, []);
-
   // Функция логина
   const login = useCallback(async (username, password, expectedRole) => {
     setError(null);
@@ -79,26 +67,12 @@ export function AuthProvider({ children }) {
     const initAuth = async () => {
       const token = localStorage.getItem('access_token');
       const savedUser = localStorage.getItem('user');
-      let prevBalance = null;
-      
-      if (savedUser) {
-        try {
-          const savedUserData = JSON.parse(savedUser);
-          if (typeof savedUserData?.balance === 'number') {
-            prevBalance = savedUserData.balance;
-          }
-        } catch {
-          prevBalance = null;
-        }
-      }
-      
       if (token && savedUser) {
         try {
           // Проверяем актуальность данных пользователя
           const response = await profileAPI.get();
           setUser(response.data);
           localStorage.setItem('user', JSON.stringify(response.data));
-          emitCoinReward(prevBalance, response.data?.balance);
         } catch (err) {
           // Токен невалиден, очищаем данные
           console.error('Ошибка получения профиля:', err);
@@ -110,22 +84,20 @@ export function AuthProvider({ children }) {
     };
 
     initAuth();
-  }, [emitCoinReward, logout]);
+  }, [logout]);
 
   // Обновление данных пользователя
   const updateUser = useCallback(async () => {
-    const prevBalance = typeof user?.balance === 'number' ? user.balance : null;
     try {
       const response = await profileAPI.get();
       setUser(response.data);
       localStorage.setItem('user', JSON.stringify(response.data));
-      emitCoinReward(prevBalance, response.data?.balance);
       return response.data;
     } catch (err) {
       console.error('Ошибка обновления профиля:', err);
       throw err;
     }
-  }, [emitCoinReward, user]);
+  }, []);
 
   // Проверка роли
   const isTeacher = user?.role === 'TEACHER';

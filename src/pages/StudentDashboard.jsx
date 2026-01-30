@@ -8,7 +8,7 @@ import TypingWidget from '../components/TypingWidget';
 import TaskList from '../components/TaskList';
 import TaskSubmitModal from '../components/TaskSubmitModal';
 import { useAuth } from '../context/AuthContext';
-import { shopAPI } from '../api/axios';
+import { shopAPI, notificationsAPI } from '../api/axios';
 
 export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'tasks', 'typing', 'shop'
@@ -24,10 +24,11 @@ export default function StudentDashboard() {
   // Модальное окно после покупки
   const [purchaseResult, setPurchaseResult] = useState(null);
   
-  // Уведомление о награде монет
+  // Уведомление о начислении coin
   const [coinReward, setCoinReward] = useState(null);
   const [confettiPieces, setConfettiPieces] = useState([]);
   const hideRewardTimeoutRef = useRef(null);
+  const isShowingRewardRef = useRef(false);
 
   const createConfettiPieces = () => {
     const colors = ['#F59E0B', '#F97316', '#10B981', '#3B82F6', '#A855F7', '#F43F5E'];
@@ -35,8 +36,8 @@ export default function StudentDashboard() {
       id: idx,
       left: Math.random() * 100,
       size: 6 + Math.random() * 6,
-      delay: Math.random() * 0.4,
-      duration: 2.2 + Math.random() * 1.4,
+      delay: Math.random() * 0.3,
+      duration: 3,
       rotation: Math.random() * 360,
       color: colors[Math.floor(Math.random() * colors.length)]
     }));
@@ -74,39 +75,62 @@ export default function StudentDashboard() {
     }
   }, [activeTab, loadShopData]);
 
+  const showCoinReward = useCallback((notifications) => {
+    if (!notifications.length || isShowingRewardRef.current) return;
+    isShowingRewardRef.current = true;
+    
+    const totalAmount = notifications.reduce((sum, item) => sum + (item.amount || 0), 0);
+    const ids = notifications.map((item) => item.id);
+    
+    setCoinReward({ amount: totalAmount, ids });
+    setConfettiPieces(createConfettiPieces());
+    
+    if (hideRewardTimeoutRef.current) {
+      clearTimeout(hideRewardTimeoutRef.current);
+    }
+    hideRewardTimeoutRef.current = setTimeout(async () => {
+      setCoinReward(null);
+      setConfettiPieces([]);
+      isShowingRewardRef.current = false;
+      try {
+        await notificationsAPI.markCoinSeen(ids);
+        await updateUser();
+      } catch (err) {
+        console.error('Ошибка отметки уведомлений:', err);
+      }
+    }, 3000);
+  }, [updateUser]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const loadNotifications = async () => {
+      try {
+        const response = await notificationsAPI.coins();
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          showCoinReward(response.data);
+        }
+      } catch (err) {
+        console.error('Ошибка получения уведомлений:', err);
+      }
+    };
+    
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 15000);
+    return () => {
+      clearInterval(interval);
+      if (hideRewardTimeoutRef.current) {
+        clearTimeout(hideRewardTimeoutRef.current);
+      }
+    };
+  }, [showCoinReward, user?.id]);
+
   useEffect(() => {
     if (!user?.id) return;
     const interval = setInterval(() => {
       updateUser();
-    }, 15000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [updateUser, user?.id]);
-
-  useEffect(() => {
-    const handleCoinsEarned = (event) => {
-      const amount = event?.detail?.amount;
-      if (!amount || amount <= 0) return;
-      
-      setCoinReward({ amount });
-      setConfettiPieces(createConfettiPieces());
-      
-      if (hideRewardTimeoutRef.current) {
-        clearTimeout(hideRewardTimeoutRef.current);
-      }
-      hideRewardTimeoutRef.current = setTimeout(() => {
-        setCoinReward(null);
-        setConfettiPieces([]);
-      }, 3200);
-    };
-
-    window.addEventListener('coins:earned', handleCoinsEarned);
-    return () => {
-      window.removeEventListener('coins:earned', handleCoinsEarned);
-      if (hideRewardTimeoutRef.current) {
-        clearTimeout(hideRewardTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // Покупка товара
   const handleBuyProduct = async (product) => {
@@ -170,7 +194,7 @@ export default function StudentDashboard() {
             </div>
             <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-space-900/90 border border-mars-500/50 text-white px-6 py-3 rounded-xl shadow-xl backdrop-blur">
               <span className="text-lg font-semibold">
-                🎉 Вам начислено {coinReward.amount} 🪙
+                🎉 Вам начислены +{coinReward.amount} coin!
               </span>
             </div>
           </div>
