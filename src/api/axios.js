@@ -198,9 +198,9 @@ export const chessAPI = {
   // Состояние игры (PvP)
   getGameState: (gameId) => api.get(`/chess/game/${gameId}/`),
   
-  // Сделать ход (PvP)
-  makeMove: (gameId, fen, move) => 
-    api.post(`/chess/game/${gameId}/`, { fen, move }),
+  // Сделать ход (PvP / fallback)
+  makeMove: (gameId, data) =>
+    api.post(`/chess/game/${gameId}/`, data),
 };
 
 export const teacherAPI = {

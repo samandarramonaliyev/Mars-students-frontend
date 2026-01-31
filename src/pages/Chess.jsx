@@ -399,7 +399,10 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
   const [currentTurn, setCurrentTurn] = useState(game?.current_turn || 'white');
   const [replayIndex, setReplayIndex] = useState(null);
   const [replayFen, setReplayFen] = useState(null);
+  const [usePolling, setUsePolling] = useState(false);
   const socketRef = useRef(null);
+  const pollingRef = useRef(null);
+  const gameOverRef = useRef(false);
 
   const isMyTurn = currentTurn === playerColor;
   const isReplay = replayIndex !== null;
@@ -435,6 +438,57 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
     }
   };
 
+  const applyGameSnapshot = (gameSnapshot) => {
+    if (!gameSnapshot) return;
+    applyState({
+      fen: gameSnapshot.fen_position,
+      last_move: gameSnapshot.last_move,
+      move_history: gameSnapshot.move_history,
+      white_time: gameSnapshot.white_time,
+      black_time: gameSnapshot.black_time,
+      current_turn: gameSnapshot.current_turn,
+      status: gameSnapshot.status,
+      result: gameSnapshot.result,
+      ended_reason: gameSnapshot.ended_reason,
+      winner_id: gameSnapshot.winner,
+      loser_id: gameSnapshot.loser,
+      type: gameSnapshot.status === 'FINISHED' ? 'game_over' : 'game_state',
+    });
+
+    if (gameSnapshot.status === 'FINISHED' && !gameOverRef.current) {
+      gameOverRef.current = true;
+      onGameOver?.({
+        result: gameSnapshot.result,
+        winner_id: gameSnapshot.winner,
+        loser_id: gameSnapshot.loser,
+        ended_reason: gameSnapshot.ended_reason,
+      });
+    }
+  };
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback(() => {
+    if (pollingRef.current) return;
+    const fetchSnapshot = async () => {
+      try {
+        const response = await chessAPI.getGameState(game.id);
+        applyGameSnapshot(response.data?.game);
+      } catch (err) {
+        setStatus(err.response?.data?.error || 'Ошибка синхронизации');
+      }
+    };
+    fetchSnapshot();
+    pollingRef.current = setInterval(async () => {
+      await fetchSnapshot();
+    }, 2000);
+  }, [game.id, applyGameSnapshot]);
+
   const buildReplayFen = (history, index) => {
     const temp = new ChessJS();
     for (let i = 0; i <= index; i += 1) {
@@ -446,9 +500,17 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
   };
 
   useEffect(() => {
+    let isActive = true;
     const token = localStorage.getItem('access_token');
     const ws = new WebSocket(`${WS_BASE_URL}/ws/chess/${game.id}/?token=${token}`);
     socketRef.current = ws;
+    gameOverRef.current = false;
+
+    ws.onopen = () => {
+      if (!isActive) return;
+      setUsePolling(false);
+      setStatus('Соединение установлено');
+    };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -466,6 +528,7 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
       if (data.type === 'game_over') {
         applyState(data);
         setGameOver(true);
+        gameOverRef.current = true;
         onGameOver?.(data);
       }
       if (data.type === 'error') {
@@ -474,13 +537,31 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
     };
 
     ws.onerror = () => {
-      setStatus('Ошибка соединения');
+      if (!isActive) return;
+      setStatus('Ошибка соединения, включен режим обновления');
+      setUsePolling(true);
+    };
+
+    ws.onclose = () => {
+      if (!isActive) return;
+      setUsePolling(true);
     };
 
     return () => {
+      isActive = false;
+      stopPolling();
       ws.close();
     };
-  }, [game.id, onGameOver]);
+  }, [game.id, onGameOver, stopPolling]);
+
+  useEffect(() => {
+    if (usePolling) {
+      setStatus('Подключение потеряно, обновление каждые 2с');
+      startPolling();
+      return;
+    }
+    stopPolling();
+  }, [usePolling, startPolling, stopPolling]);
 
   useEffect(() => {
     if (gameOver) {
@@ -505,12 +586,27 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
       return false;
     }
 
-    socketRef.current?.send(JSON.stringify({
-      type: 'move',
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: 'move',
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: 'q'
+      }));
+      return true;
+    }
+
+    setUsePolling(true);
+    chessAPI.makeMove(game.id, {
       from: sourceSquare,
       to: targetSquare,
       promotion: 'q'
-    }));
+    }).then((response) => {
+      applyGameSnapshot(response.data?.game);
+    }).catch((err) => {
+      setStatus(err.response?.data?.error || 'Ошибка отправки хода');
+    });
     return true;
   };
 

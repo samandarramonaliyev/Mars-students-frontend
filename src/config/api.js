@@ -30,8 +30,26 @@ const getApiUrl = () => {
 export const API_BASE_URL = getApiUrl();
 // Базовый URL для медиа (убираем /api если есть)
 export const MEDIA_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
+
+const getWsBaseUrl = () => {
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL.replace(/\/$/, '');
+  }
+
+  const hasProtocol = /^https?:\/\//.test(MEDIA_BASE_URL);
+  const browserOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const httpBase = hasProtocol ? MEDIA_BASE_URL : (browserOrigin || MEDIA_BASE_URL);
+  const wsBase = httpBase.replace(/^http/, 'ws');
+
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && wsBase.startsWith('ws://')) {
+    return wsBase.replace('ws://', 'wss://');
+  }
+
+  return wsBase;
+};
+
 // Базовый URL для WebSocket
-export const WS_BASE_URL = MEDIA_BASE_URL.replace(/^http/, 'ws');
+export const WS_BASE_URL = getWsBaseUrl();
 
 // Таймауты запросов (в миллисекундах)
 export const API_TIMEOUT = 30000;
