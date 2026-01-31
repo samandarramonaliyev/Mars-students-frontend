@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess as ChessJS } from 'chess.js';
 import { useAuth } from '../context/AuthContext';
-import { chessAPI } from '../api/axios';
+import { authAPI, chessAPI } from '../api/axios';
 import { MEDIA_BASE_URL, WS_BASE_URL } from '../config/api';
 import Navbar from '../components/Navbar';
 
@@ -403,6 +403,8 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
   const socketRef = useRef(null);
   const pollingRef = useRef(null);
   const gameOverRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef(null);
 
   const isMyTurn = currentTurn === playerColor;
   const isReplay = replayIndex !== null;
@@ -466,6 +468,22 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
     }
   };
 
+  const refreshAccessToken = useCallback(async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) return null;
+    try {
+      const response = await authAPI.refreshToken(refreshToken);
+      const access = response.data?.access;
+      if (access) {
+        localStorage.setItem('access_token', access);
+        return access;
+      }
+    } catch (err) {
+      return null;
+    }
+    return null;
+  }, []);
+
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -501,58 +519,124 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
 
   useEffect(() => {
     let isActive = true;
-    const token = localStorage.getItem('access_token');
-    const ws = new WebSocket(`${WS_BASE_URL}/ws/chess/${game.id}/?token=${token}`);
-    socketRef.current = ws;
-    gameOverRef.current = false;
 
-    ws.onopen = () => {
-      if (!isActive) return;
-      setUsePolling(false);
-      setStatus('Соединение установлено');
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'game_state') {
-        applyState(data);
-      }
-      if (data.type === 'move') {
-        applyState(data);
-      }
-      if (data.type === 'timer_update') {
-        if (typeof data.white_time === 'number') setWhiteTime(data.white_time);
-        if (typeof data.black_time === 'number') setBlackTime(data.black_time);
-        if (data.current_turn) setCurrentTurn(data.current_turn);
-      }
-      if (data.type === 'game_over') {
-        applyState(data);
-        setGameOver(true);
-        gameOverRef.current = true;
-        onGameOver?.(data);
-      }
-      if (data.type === 'error') {
-        setStatus(data.message || 'Ошибка хода');
+    const cleanupSocket = () => {
+      if (socketRef.current) {
+        try {
+          socketRef.current.close();
+        } catch (err) {
+          // no-op
+        }
       }
     };
 
-    ws.onerror = () => {
-      if (!isActive) return;
-      setStatus('Ошибка соединения, включен режим обновления');
-      setUsePolling(true);
+    const handleSocketFailure = async (reason) => {
+      if (!isActive || gameOverRef.current) return;
+      if (reason === 'not_in_game' || reason === 'game_not_found') {
+        setStatus('Игра недоступна');
+        setUsePolling(true);
+        return;
+      }
+      if (reconnectAttemptsRef.current >= 2) {
+        setStatus('Подключение потеряно, обновление каждые 2с');
+        setUsePolling(true);
+        return;
+      }
+
+      setStatus('Пробую переподключиться...');
+      const refreshed = await refreshAccessToken();
+      const token = refreshed || localStorage.getItem('access_token');
+      if (!token) {
+        setUsePolling(true);
+        return;
+      }
+
+      reconnectAttemptsRef.current += 1;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+      const delay = 500 * reconnectAttemptsRef.current;
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!isActive) return;
+        createSocket(token);
+      }, delay);
     };
 
-    ws.onclose = () => {
-      if (!isActive) return;
-      setUsePolling(true);
+    const createSocket = (token) => {
+      cleanupSocket();
+      const ws = new WebSocket(`${WS_BASE_URL}/ws/chess/${game.id}/?token=${token}`);
+      socketRef.current = ws;
+      gameOverRef.current = false;
+
+      ws.onopen = () => {
+        if (!isActive) return;
+        reconnectAttemptsRef.current = 0;
+        setUsePolling(false);
+        setStatus('Соединение установлено');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'game_state') {
+          applyState(data);
+        }
+        if (data.type === 'move') {
+          applyState(data);
+        }
+        if (data.type === 'timer_update') {
+          if (typeof data.white_time === 'number') setWhiteTime(data.white_time);
+          if (typeof data.black_time === 'number') setBlackTime(data.black_time);
+          if (data.current_turn) setCurrentTurn(data.current_turn);
+        }
+        if (data.type === 'game_over') {
+          applyState(data);
+          setGameOver(true);
+          gameOverRef.current = true;
+          onGameOver?.(data);
+        }
+        if (data.type === 'error') {
+          if (['auth_failed', 'game_not_found', 'not_in_game'].includes(data.message)) {
+            handleSocketFailure(data.message);
+            return;
+          }
+          setStatus(data.message || 'Ошибка хода');
+        }
+      };
+
+      ws.onerror = () => {
+        if (!isActive) return;
+        handleSocketFailure('error');
+      };
+
+      ws.onclose = () => {
+        if (!isActive) return;
+        handleSocketFailure('close');
+      };
     };
+
+    const initialToken = localStorage.getItem('access_token');
+    if (initialToken) {
+      createSocket(initialToken);
+    } else {
+      refreshAccessToken().then((token) => {
+        if (!isActive) return;
+        if (token) {
+          createSocket(token);
+        } else {
+          setUsePolling(true);
+        }
+      });
+    }
 
     return () => {
       isActive = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
       stopPolling();
-      ws.close();
+      cleanupSocket();
     };
-  }, [game.id, onGameOver, stopPolling]);
+  }, [game.id, onGameOver, refreshAccessToken, stopPolling]);
 
   useEffect(() => {
     if (usePolling) {
