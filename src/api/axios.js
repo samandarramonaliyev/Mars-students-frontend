@@ -74,8 +74,13 @@ api.interceptors.response.use(
 // API методы
 export const authAPI = {
   // Логин пользователя
-  login: (username, password) => 
-    api.post('/auth/login/', { username, password }),
+  login: (username, password, expectedRole) => 
+    api.post('/auth/login/', {
+      username,
+      login: username,
+      password,
+      expected_role: expectedRole,
+    }),
   
   // Обновление токена
   refreshToken: (refreshToken) => 

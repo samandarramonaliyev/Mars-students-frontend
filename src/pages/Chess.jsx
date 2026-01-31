@@ -423,8 +423,13 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
 
   const applyState = (data) => {
     if (data.fen) {
-      chess.load(data.fen);
-      setFen(data.fen);
+      try {
+        chess.load(data.fen);
+        setFen(data.fen);
+      } catch (err) {
+        setStatus('Ошибка состояния доски');
+        return;
+      }
     }
     if (data.last_move) {
       setLastMove(uciToSquares(data.last_move));
@@ -512,7 +517,11 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
     for (let i = 0; i <= index; i += 1) {
       const move = history[i];
       if (!move) break;
-      temp.move(move);
+      try {
+        temp.move(move);
+      } catch (err) {
+        break;
+      }
     }
     return temp.fen();
   };
@@ -521,12 +530,15 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
     let isActive = true;
 
     const cleanupSocket = () => {
-      if (socketRef.current) {
-        try {
-          socketRef.current.close();
-        } catch (err) {
-          // no-op
-        }
+      const socket = socketRef.current;
+      if (!socket) return;
+      if (socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) {
+        return;
+      }
+      try {
+        socket.close();
+      } catch (err) {
+        // no-op
       }
     };
 
@@ -661,11 +673,16 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
     if (!isMyTurn) return false;
 
     const temp = new ChessJS(fen);
-    const move = temp.move({
-      from: sourceSquare,
-      to: targetSquare,
-      promotion: 'q'
-    });
+    let move = null;
+    try {
+      move = temp.move({
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: 'q'
+      });
+    } catch (err) {
+      return false;
+    }
     if (!move) {
       return false;
     }
@@ -697,7 +714,12 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
   const handleResign = () => {
     if (gameOver) return;
     if (!confirm('Вы уверены, что хотите сдаться?')) return;
-    socketRef.current?.send(JSON.stringify({ type: 'resign' }));
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'resign' }));
+      return;
+    }
+    setStatus('Нет соединения для сдачи');
   };
 
   const handleReplayClick = (index) => {
