@@ -399,7 +399,8 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
   const [currentTurn, setCurrentTurn] = useState(game?.current_turn || 'white');
   const [replayIndex, setReplayIndex] = useState(null);
   const [replayFen, setReplayFen] = useState(null);
-  const [usePolling, setUsePolling] = useState(false);
+  const WEBSOCKET_ENABLED = import.meta.env.VITE_DISABLE_WS !== 'true';
+  const [usePolling, setUsePolling] = useState(!WEBSOCKET_ENABLED);
   const socketRef = useRef(null);
   const pollingRef = useRef(null);
   const gameOverRef = useRef(false);
@@ -554,6 +555,12 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
   };
 
   useEffect(() => {
+    if (!WEBSOCKET_ENABLED) {
+      setUsePolling(true);
+      return () => {
+        stopPolling();
+      };
+    }
     let isActive = true;
 
     const cleanupSocket = () => {
@@ -669,11 +676,11 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
       stopPolling();
       cleanupSocket();
     };
-  }, [game.id, onGameOver, getValidAccessToken, refreshAccessToken, stopPolling]);
+  }, [game.id, onGameOver, getValidAccessToken, refreshAccessToken, stopPolling, WEBSOCKET_ENABLED]);
 
   useEffect(() => {
     if (usePolling) {
-      setStatus('Подключение потеряно, обновление каждые 2с');
+      setStatus(WEBSOCKET_ENABLED ? 'Подключение потеряно, обновление каждые 2с' : 'Обновление каждые 2с');
       startPolling();
       return;
     }
