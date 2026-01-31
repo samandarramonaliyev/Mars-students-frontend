@@ -24,13 +24,31 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const refreshAccessToken = useCallback(async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) return null;
+    try {
+      const response = await authAPI.refreshToken(refreshToken);
+      const access = response.data?.access;
+      if (access) {
+        localStorage.setItem('access_token', access);
+        return access;
+      }
+    } catch (err) {
+      return null;
+    }
+    return null;
+  }, []);
+
   // Функция логина
   const login = useCallback(async (username, password, expectedRole) => {
     setError(null);
     setLoading(true);
 
     try {
-      const response = await authAPI.login(username, password, expectedRole);
+      const safeUsername = (username || '').trim();
+      const safePassword = password || '';
+      const response = await authAPI.login(safeUsername, safePassword, expectedRole);
       const { access, refresh, user: userData } = response.data;
 
       // Сохраняем токены
@@ -74,9 +92,21 @@ export function AuthProvider({ children }) {
           setUser(response.data);
           localStorage.setItem('user', JSON.stringify(response.data));
         } catch (err) {
-          // Токен невалиден, очищаем данные
-          console.error('Ошибка получения профиля:', err);
-          logout();
+          const refreshed = await refreshAccessToken();
+          if (refreshed) {
+            try {
+              const response = await profileAPI.get();
+              setUser(response.data);
+              localStorage.setItem('user', JSON.stringify(response.data));
+            } catch (profileErr) {
+              console.error('Ошибка получения профиля:', profileErr);
+              logout();
+            }
+          } else {
+            // Токен невалиден, очищаем данные
+            console.error('Ошибка получения профиля:', err);
+            logout();
+          }
         }
       }
       
@@ -84,7 +114,7 @@ export function AuthProvider({ children }) {
     };
 
     initAuth();
-  }, [logout]);
+  }, [logout, refreshAccessToken]);
 
   // Обновление данных пользователя
   const updateUser = useCallback(async () => {

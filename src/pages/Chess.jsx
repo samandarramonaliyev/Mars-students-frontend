@@ -489,6 +489,27 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
     return null;
   }, []);
 
+  const getTokenExpiry = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp ? payload.exp * 1000 : null;
+    } catch (err) {
+      return null;
+    }
+  };
+
+  const getValidAccessToken = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return null;
+    const expMs = getTokenExpiry(token);
+    if (!expMs) return token;
+    const now = Date.now();
+    if (expMs - now > 60 * 1000) {
+      return token;
+    }
+    return await refreshAccessToken();
+  }, [refreshAccessToken]);
+
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -503,14 +524,20 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
         const response = await chessAPI.getGameState(game.id);
         applyGameSnapshot(response.data?.game);
       } catch (err) {
-        setStatus(err.response?.data?.error || 'Ошибка синхронизации');
+        const statusCode = err.response?.status;
+        const message = err.response?.data?.error || 'Ошибка синхронизации';
+        setStatus(message);
+        if (statusCode === 403 || statusCode === 404) {
+          setUsePolling(false);
+          stopPolling();
+        }
       }
     };
     fetchSnapshot();
     pollingRef.current = setInterval(async () => {
       await fetchSnapshot();
     }, 2000);
-  }, [game.id, applyGameSnapshot]);
+  }, [game.id, applyGameSnapshot, stopPolling]);
 
   const buildReplayFen = (history, index) => {
     const temp = new ChessJS();
@@ -556,8 +583,7 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
       }
 
       setStatus('Пробую переподключиться...');
-      const refreshed = await refreshAccessToken();
-      const token = refreshed || localStorage.getItem('access_token');
+      const token = await getValidAccessToken();
       if (!token) {
         setUsePolling(true);
         return;
@@ -626,19 +652,14 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
       };
     };
 
-    const initialToken = localStorage.getItem('access_token');
-    if (initialToken) {
-      createSocket(initialToken);
-    } else {
-      refreshAccessToken().then((token) => {
-        if (!isActive) return;
-        if (token) {
-          createSocket(token);
-        } else {
-          setUsePolling(true);
-        }
-      });
-    }
+    getValidAccessToken().then((token) => {
+      if (!isActive) return;
+      if (token) {
+        createSocket(token);
+      } else {
+        setUsePolling(true);
+      }
+    });
 
     return () => {
       isActive = false;
@@ -648,7 +669,7 @@ function ChessGame({ game, isPvP, playerColor, onGameOver, onExit }) {
       stopPolling();
       cleanupSocket();
     };
-  }, [game.id, onGameOver, refreshAccessToken, stopPolling]);
+  }, [game.id, onGameOver, getValidAccessToken, refreshAccessToken, stopPolling]);
 
   useEffect(() => {
     if (usePolling) {
